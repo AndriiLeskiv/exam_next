@@ -1,5 +1,7 @@
 import axios from "axios";
-import {retrieveTokenFromStorage, setTokenToStorage} from "./helpers";
+import {setTokenToStorage} from "./helpers";
+import {getCookie} from "cookies-next";
+import {retrieveTokenFromServer} from "@/app/service/helpers.server";
 
 // Створення екземпляра axios з базовим URL
 const axiosInstance = axios.create({
@@ -9,7 +11,13 @@ const axiosInstance = axios.create({
 // Перехоплювач запитів для додавання токена в заголовки
 axiosInstance.interceptors.request.use(
     async (config) => {
-        const token = retrieveTokenFromStorage<string>("accessToken");
+        let token: string | null;
+        if (typeof window === "undefined") {
+            token = await retrieveTokenFromServer("accessToken");
+        } else {
+            token = getCookie("accessToken") as string | null;
+        }
+
         if (token) {
             config.headers["Authorization"] = `Bearer ${token}`;
         }
@@ -31,7 +39,12 @@ axiosInstance.interceptors.response.use(
         // Перевіряємо, чи є помилка авторизації (401)
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
-            const refreshToken = retrieveTokenFromStorage<string>("refreshToken");
+            let refreshToken: string | null;
+            if (typeof window === "undefined") {
+                refreshToken = await retrieveTokenFromServer("refreshToken");
+            } else {
+                refreshToken = getCookie("refreshToken") as string | null;
+            }
 
             if (!refreshToken) {
                 return Promise.reject(error);
@@ -48,6 +61,9 @@ axiosInstance.interceptors.response.use(
                 return axiosInstance(originalRequest);
             } catch (err) {
                 console.error("Не вдалося оновити токен", err);
+                setTokenToStorage("accessToken", "");
+                setTokenToStorage("refreshToken", "");
+                window.location.href = "/login";
                 return Promise.reject(error);
             }
         }
